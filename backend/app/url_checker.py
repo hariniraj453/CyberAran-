@@ -1,5 +1,7 @@
 """Analyze URLs for potentially suspicious characteristics."""
 
+import ipaddress
+import re
 from urllib.parse import urlparse
 
 
@@ -9,13 +11,15 @@ SUSPICIOUS_KEYWORDS = {
     "account",
     "password",
     "confirm",
+    "signin",
+    "secure",
 }
 
 SUSPICIOUS_TLDS = {".click", ".top", ".xyz", ".zip"}
 
 
 def analyze_url(url: str) -> dict:
-    """Return a preliminary risk assessment for a URL."""
+    """Return a preliminary rule-based risk assessment for a URL."""
     value = url.strip()
     candidate = value if "://" in value else f"https://{value}"
     parsed = urlparse(candidate)
@@ -31,6 +35,16 @@ def analyze_url(url: str) -> dict:
     if "@" in parsed.netloc:
         reasons.append("URL contains an @ symbol in its authority")
 
+    if host:
+        try:
+            ipaddress.ip_address(host)
+            reasons.append("Uses an IP address instead of a domain name")
+        except ValueError:
+            pass
+
+    if re.search(r"https?://[^/]*-[^/]*\.", candidate, re.IGNORECASE):
+        reasons.append("Hostname contains hyphens")
+
     if any(word in value.lower() for word in SUSPICIOUS_KEYWORDS):
         reasons.append("Contains a security-sensitive keyword")
 
@@ -40,11 +54,18 @@ def analyze_url(url: str) -> dict:
     if len(host) > 50:
         reasons.append("Hostname is unusually long")
 
+    if parsed.scheme == "http":
+        reasons.append("Uses unencrypted HTTP")
+
     if any("Invalid" in reason for reason in reasons):
         risk = "high"
-    elif (
-        "URL contains an @ symbol in its authority" in reasons
-        or "Uses a TLD that warrants extra scrutiny" in reasons
+    elif any(
+        reason in reasons
+        for reason in [
+            "URL contains an @ symbol in its authority",
+            "Uses an IP address instead of a domain name",
+            "Uses a TLD that warrants extra scrutiny",
+        ]
     ):
         risk = "high"
     elif reasons:
@@ -57,7 +78,7 @@ def analyze_url(url: str) -> dict:
         "risk_level": risk,
         "reasons": reasons,
         "note": (
-            "This is a preliminary rule-based assessment, "
-            "not proof that a URL is safe or malicious."
+            "This is a preliminary rule-based assessment, not proof "
+            "that a URL is safe or malicious."
         ),
     }
