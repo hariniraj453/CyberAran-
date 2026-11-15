@@ -1,4 +1,8 @@
+
 """FastAPI application for CyberAran."""
+
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import FastAPI
 from pydantic import BaseModel, HttpUrl
@@ -49,8 +53,6 @@ def check_url(request: URLCheckRequest) -> dict:
 @app.post("/threat-reports", status_code=201)
 def submit_threat_report(request: ThreatReportRequest) -> dict:
     """Save a submitted threat report to the database."""
-    from datetime import datetime, timezone
-    from uuid import uuid4
 
     db: Session = SessionLocal()
 
@@ -76,5 +78,35 @@ def submit_threat_report(request: ThreatReportRequest) -> dict:
             "created_at": report.created_at.isoformat(),
             "status": report.status,
         }
+
+    finally:
+        db.close()
+
+
+@app.get("/threat-reports")
+def get_threat_reports() -> list[dict]:
+    """Retrieve all submitted threat reports."""
+
+    db: Session = SessionLocal()
+
+    try:
+        reports = (
+            db.query(models.ThreatReport)
+            .order_by(models.ThreatReport.created_at.desc())
+            .all()
+        )
+
+        return [
+            {
+                "report_id": report.report_id,
+                "url": report.url,
+                "description": report.description,
+                "reporter": report.reporter,
+                "created_at": report.created_at.isoformat(),
+                "status": report.status,
+            }
+            for report in reports
+        ]
+
     finally:
         db.close()
